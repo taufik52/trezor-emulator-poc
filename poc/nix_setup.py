@@ -16,12 +16,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from trezorlib import debuglink, messages
 
-from common import TEST_MNEMONIC, open_session
+from common import TEST_MNEMONIC, open_seedless_session
 
 
 def main() -> int:
     path = os.environ.get("TREZOR_PATH", "udp:127.0.0.1:21324")
-    test_ctx, session = open_session(path)
+    # Seedless session: a standard session cannot be derived on a fresh
+    # (uninitialized) device — get_session() fails with NotInitialized
+    # (run #3). This mirrors trezor-firmware's own test setup
+    # (tests/conftest.py: get_session(passphrase=None) after wipe).
+    test_ctx, session = open_seedless_session(path)
     with test_ctx:
         if session.features.initialized:
             print("device already initialized; wiping first ...")

@@ -19,9 +19,15 @@ from trezorlib.debuglink import TrezorTestContext
 from trezorlib.debuglink import LayoutContent
 from trezorlib.transport import enumerate_devices, get_transport
 
-# Standard public test mnemonic used by trezor-firmware's own test suite.
+# Standard public test mnemonic used by trezor-firmware's own test suite
+# (tests/conftest.py SetupParams default) and by trezor-user-env's own
+# controller test (" ".join(["all"] * 12)).
 # Test data only — never use for real funds.
-TEST_MNEMONIC = "all all all all all all all all all all all all art"
+# NOTE: this used to be "all" x12 + "art" (13 words) — NOT a valid BIP-39
+# mnemonic (word count must be 12/15/18/21/24). The firmware's LoadDevice
+# handler rejects it, which surfaced as FirmwareError 99 (empty message)
+# from the trezor-user-env emulator-setup RPC in run #3.
+TEST_MNEMONIC = " ".join(["all"] * 12)
 
 
 def find_transport(path: str | None = None, timeout: float = 120):
@@ -51,6 +57,25 @@ def open_session(path: str | None = None, timeout: float = 120):
     transport = find_transport(path, timeout=timeout)
     test_ctx = TrezorTestContext(transport)
     session = test_ctx.get_session()
+    return test_ctx, session
+
+
+def open_seedless_session(path: str | None = None, timeout: float = 120):
+    """Return (test_ctx, session) with a SEEDLESS session.
+
+    A seedless session never derives the wallet (no GET_ROOT_FINGERPRINT),
+    so it works on a fresh/uninitialized device — exactly what
+    trezor-firmware's own test suite does (tests/conftest.py:
+    `_raw_test_ctx.get_session(passphrase=None)`) and what trezor-user-env's
+    setup_device does (`client.get_seedless_session()`).
+
+    Required before load_device: a standard session cannot be derived until
+    the device is initialized (chicken-and-egg — get_session() fails with
+    TrezorFailure: NotInitialized on a fresh device, as seen in run #3).
+    """
+    transport = find_transport(path, timeout=timeout)
+    test_ctx = TrezorTestContext(transport)
+    session = test_ctx.get_seedless_session()
     return test_ctx, session
 
 

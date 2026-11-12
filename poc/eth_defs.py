@@ -79,9 +79,11 @@ def sign_payload(
         merkle_proof.append(digest)
 
     merkle_proof = len(merkle_proof).to_bytes(1, "little") + b"".join(merkle_proof)
-    signature = cosi.sign_with_privkeys(
-        digest, PRIVATE_KEYS_DEV[:threshold], deterministic=True
-    )
+    # No deterministic=True: PyPI trezor 0.20.2 sign_with_privkeys takes
+    # only (digest, privkeys) — the deterministic kwarg exists only in the
+    # firmware-vendored trezorlib. Random nonces are fine here; the
+    # signature only has to verify against the dev keys on the device.
+    signature = cosi.sign_with_privkeys(digest, PRIVATE_KEYS_DEV[:threshold])
     sigmask = 0
     for i in range(threshold):
         sigmask |= 1 << i

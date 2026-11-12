@@ -63,13 +63,17 @@ def build_tx(funding: str, recipient: str, use_alt: bool, table: str) -> bytes:
 
 def analyse(outcome: dict, recipient: str, table: str) -> dict:
     pages_text = "\n".join(outcome["pages"])
+    # The emulator display wraps long addresses with spaces/newlines
+    # ("3JF3sEqM796hk5WFqA6 EtmEwJQ9quALszsfJyv XNQKy3"), so substring
+    # checks must run against the whitespace-stripped text; the raw
+    # check wrongly reported the control recipient as not shown.
     compact = "".join(pages_text.split())
     return {
         "signed": outcome.get("signed", False),
         "error": outcome.get("error"),
         "signature": outcome.get("signature"),
-        "recipient_shown": recipient in pages_text,
-        "table_shown": table in pages_text,
+        "recipient_shown": recipient in compact,
+        "table_shown": table in compact,
         "mentions_lookup_table": "lookup table" in pages_text.lower(),
         "n_pages": len(outcome["pages"]),
         "pages": outcome["pages"],

@@ -1,2 +1,2 @@
-trezorlib>=0.20
+trezor>=0.20
 websocket-client>=1.8

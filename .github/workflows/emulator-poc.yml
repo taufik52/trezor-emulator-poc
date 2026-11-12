@@ -84,7 +84,7 @@ jobs:
 
       - name: Clone trezor-firmware at the audited HEAD
         run: |
-          git clone --depth 1 --branch master https://github.com/trezor/trezor-firmware.git firmware
+          git clone --depth 1 --branch main https://github.com/trezor/trezor-firmware.git firmware
           cd firmware && git fetch --depth 1 origin dc067f5 && git checkout dc067f5
           git submodule update --init --recursive
 

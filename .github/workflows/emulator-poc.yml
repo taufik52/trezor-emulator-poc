@@ -1,0 +1,134 @@
+name: emulator-poc
+
+# PoC for Trezor firmware findings A1 (ERC-7730 silent downgrade to blind
+# signing) and B1 (Solana v0 ALT recipient never shown), executed against
+# the firmware emulator. No hardware, no payment, no secrets.
+#
+# Primary path: trezor-user-env Docker image (prebuilt emulator + controller).
+# Fallback (only if the primary job fails): build the emulator from source
+# with nix, exactly like trezor-firmware's own CI does.
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  poc-tenv:
+    name: PoC via trezor-user-env
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PoC dependencies
+        run: pip install -r requirements.txt
+
+      - name: Start trezor-user-env
+        run: |
+          docker run -d --name tenv --network host ghcr.io/trezor/trezor-user-env
+          echo "waiting for dashboard on :9002 ..."
+          for i in $(seq 1 60); do
+            curl -sf http://127.0.0.1:9002 -o /dev/null && break
+            sleep 5
+          done
+          curl -sf http://127.0.0.1:9002 -o /dev/null
+          echo "dashboard is up"
+          docker logs tenv --tail 20
+
+      - name: Start emulator + load test mnemonic
+        run: python poc/tenv_setup.py --model T2T1
+
+      - name: Run PoC A1 + B1
+        run: python poc/run_all.py --out poc-results
+
+      - name: Emulator screenshot (final screen)
+        if: always()
+        run: |
+          python -c "
+          import base64, sys
+          sys.path.insert(0, 'poc')
+          from tenv import TenvClient
+          with TenvClient() as t:
+              b64 = t.get_screenshot_b64()
+              open('poc-results/final-screen.png', 'wb').write(base64.b64decode(b64))
+              print('screenshot saved')
+          " || echo "screenshot unavailable"
+
+      - name: Upload PoC results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: poc-results-tenv
+          path: poc-results
+          if-no-files-found: warn
+
+  poc-nix:
+    name: PoC via nix-built emulator (fallback)
+    needs: poc-tenv
+    if: failure()
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Clone trezor-firmware at the audited HEAD
+        run: |
+          git clone --depth 1 --branch master https://github.com/trezor/trezor-firmware.git firmware
+          cd firmware && git fetch --depth 1 origin dc067f5 && git checkout dc067f5
+          git submodule update --init --recursive
+
+      - name: Install uv
+        run: curl -LsSf https://astral.sh/uv/install.sh | sh
+
+      - name: Build emulator (T2T1, test-live preset)
+        working-directory: firmware
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          nix develop --command bash -c "uv sync && uv run xtask build firmware --emulator -m T2T1 -p test-live"
+
+      - name: Start emulator headless
+        working-directory: firmware
+        run: |
+          export PATH="$HOME/.local/bin:$PATH"
+          setsid nohup nix develop --command bash -c "./core/emu.py -h -t -P 21324" > /tmp/emu.log 2>&1 < /dev/null &
+          for i in $(seq 1 60); do
+            grep -q "Emulator ready" /tmp/emu.log && break
+            sleep 5
+          done
+          grep "Emulator ready" /tmp/emu.log || (tail -50 /tmp/emu.log; exit 1)
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install PoC dependencies
+        run: pip install -r requirements.txt
+
+      - name: Load test mnemonic into emulator
+        env:
+          TREZOR_PATH: udp:127.0.0.1:21324
+        run: python poc/nix_setup.py
+
+      - name: Run PoC A1 + B1
+        env:
+          TREZOR_PATH: udp:127.0.0.1:21324
+        run: python poc/run_all.py --out poc-results --trezor-path udp:127.0.0.1:21324
+
+      - name: Upload PoC results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: poc-results-nix
+          path: poc-results
+          if-no-files-found: warn

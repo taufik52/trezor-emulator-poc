@@ -101,7 +101,7 @@ jobs:
         working-directory: firmware
         run: |
           export PATH="$HOME/.local/bin:$PATH"
-          setsid nohup nix develop --command bash -c "./core/emu.py -h -t -P 21324" > /tmp/emu.log 2>&1 < /dev/null &
+          setsid nohup nix develop --command bash -c "uv run ./core/emu.py -h -t -P 21324" > /tmp/emu.log 2>&1 < /dev/null &
           for i in $(seq 1 60); do
             grep -q "Emulator ready" /tmp/emu.log && break
             sleep 5

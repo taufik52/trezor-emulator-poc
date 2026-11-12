@@ -28,8 +28,8 @@ def main() -> int:
         print("ping:", tenv.ping())
         check = tenv.background_check()
         print("background-check:", check)
-        resp = check.get("response", {})
-        if not resp.get("bridge_status"):
+        bridge = check.get("bridge_status") or {}
+        if not bridge.get("is_running"):
             print("starting bridge ...")
             print(tenv.bridge_start())
             time.sleep(3)

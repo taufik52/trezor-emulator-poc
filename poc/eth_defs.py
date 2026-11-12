@@ -9,10 +9,11 @@
 from __future__ import annotations
 
 import io
+import struct
 import typing as t
 from hashlib import sha256
 
-from trezorlib import cosi, definitions, messages, protobuf
+from trezorlib import cosi, messages, protobuf
 from trezorlib.testing.common import PRIVATE_KEYS_DEV
 
 
@@ -46,14 +47,23 @@ def make_payload(
         protobuf.dump_message(writer, message)
         message_bytes = writer.getvalue()
 
-    payload = definitions.DefinitionPayload(
-        magic=magic,
-        version=format_version,
-        data_type=data_type,
-        timestamp=timestamp,
-        data=message_bytes,
+    # Payload bytes are packed by hand (struct) instead of
+    # trezorlib.definitions.DefinitionPayload: PyPI trezor 0.20.2 dropped the
+    # 1-byte format-version field (its FORMAT_MAGIC is b"trzd1"), but the
+    # firmware under test (dc067f5, core/embed/rust/src/definitions/blob.rs
+    # parse_and_verify) requires magic b"trzd" + 1-byte version (b"2" = V2)
+    # + 1-byte type + u32-LE timestamp + u16-LE length + data.
+    # Verified locally: these bytes are identical to the firmware-vendored
+    # trezorlib DefinitionPayload.build() output.
+    payload = (
+        magic
+        + format_version
+        + bytes([int(data_type)])
+        + struct.pack("<I", timestamp)
+        + struct.pack("<H", len(message_bytes))
+        + message_bytes
     )
-    return payload.build()
+    return payload
 
 
 def sign_payload(

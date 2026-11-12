@@ -81,7 +81,10 @@ def main(out_path: str = "poc-results/b1.json", trezor_path: str | None = None) 
     result: dict = {"finding": "TREZOR-B1", "fw": fw_info(session)}
 
     # The funding account must be the device's own address (the signer).
-    funding = solana.get_address(session, SOLANA_PATH)
+    # show_display=False: trezorlib 0.20.2 requires the show_display
+    # argument (get_authenticated_address gained it as a required param);
+    # no on-screen display is needed here.
+    funding = solana.get_address(session, SOLANA_PATH, show_display=False)
     # "Attacker" recipient: an address the ALT is declared to resolve to.
     attacker = b58encode(bytes([0x22] * 32))
     # The lookup table itself: any valid address.
